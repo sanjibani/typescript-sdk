@@ -376,6 +376,66 @@ describe.each(zodTestMatrix)('$zodVersionLabel', (entry: ZodMatrixEntry) => {
         });
 
         /***
+         * Test: Updating Tool with ZodObject paramsSchema
+         *
+         * Regression for #1960: passing a ZodObject (instead of a raw shape)
+         * to tool.update({ paramsSchema }) used to call objectFromShape
+         * directly, which iterated over the ZodObject's own enumerable
+         * properties (including internal ones like _cached=null) and
+         * crashed with 'Cannot read properties of null (reading _zod)'.
+         * The update path now routes through getZodSchemaObject (the same
+         * helper the create path uses), so a v3 ZodObject passes through
+         * unchanged.
+         */
+        test('should update tool with a v3 ZodObject paramsSchema', async () => {
+            const mcpServer = new McpServer({
+                name: 'test server',
+                version: '1.0'
+            });
+            const client = new Client({
+                name: 'test client',
+                version: '1.0'
+            });
+
+            const schema = z
+                .object({
+                    id: z.string(),
+                    property: z.string().optional()
+                })
+                .passthrough();
+
+            // Use registerTool so the schema reaches the create path as a
+            // proper ZodObject (the variadic tool() overload cannot tell a
+            // ZodObject from a raw shape whose values happen to be
+            // ZodTypeLikes).
+            const tool = mcpServer.registerTool(
+                'my_tool',
+                { description: 'test', inputSchema: schema },
+                async () => ({ content: [{ type: 'text', text: 'ok' }] })
+            );
+
+            // Before the fix, the update path crashed with
+            // 'TypeError: Cannot read properties of null (reading _zod)'.
+            expect(() => tool.update({ paramsSchema: schema })).not.toThrow();
+
+            const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+            await Promise.all([client.connect(clientTransport), mcpServer.connect(serverTransport)]);
+
+            // The update left the schema intact; the list response should
+            // expose the same property keys the ZodObject had.
+            const listResult = await client.request({ method: 'tools/list' }, ListToolsResultSchema);
+            const listed = listResult.tools.find(t => t.name === 'my_tool');
+            expect(listed).toBeDefined();
+            expect(listed?.inputSchema).toMatchObject({
+                type: 'object',
+                properties: expect.objectContaining({
+                    id: expect.objectContaining({ type: 'string' }),
+                    property: expect.objectContaining({ type: 'string' })
+                })
+            });
+        });
+
+        /***
          * Test: Updating Existing Tool
          */
         test('should update existing tool', async () => {
