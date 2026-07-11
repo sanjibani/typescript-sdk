@@ -723,7 +723,12 @@ export abstract class Protocol<ContextT extends BaseContext> {
     }
 
     private async _oncancel(notification: CancelledNotification): Promise<void> {
-        if (!notification.params.requestId) {
+        // Use a `== null` check so a legitimate `requestId: 0` (a legal
+        // JSON-RPC id and the one the per-instance counter assigns to the
+        // first outbound request) is treated as a real id and not as
+        // "absent". A truthiness check (`!requestId`) here dropped
+        // cancellations targeting id 0. See issue #2283.
+        if (notification.params.requestId == null) {
             return;
         }
         // Handle request cancellation

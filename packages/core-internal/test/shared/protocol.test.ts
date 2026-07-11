@@ -819,6 +819,58 @@ describe('protocol tests', () => {
             // Verify the request was aborted
             expect(wasAborted).toBe(true);
         });
+
+        // Regression: `_oncancel` guarded the inbound `requestId` with a
+        // truthiness check, so `requestId: 0` (a legal JSON-RPC id, and the
+        // id the per-instance counter assigns to the first outbound request)
+        // was treated like an absent id and the in-flight handler kept
+        // running. See issue #2283.
+        test('should abort request handler when notifications/cancelled targets requestId 0', async () => {
+            await protocol.connect(transport);
+
+            // Set up a request handler that mirrors the existing test but
+            // for an inbound id of 0.
+            let wasAborted = false;
+            protocol.setRequestHandler('ping', async (_request, ctx) => {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                wasAborted = ctx.mcpReq.signal.aborted;
+                return {};
+            });
+
+            // Simulate an incoming request with id 0.
+            if (transport.onmessage) {
+                transport.onmessage({
+                    jsonrpc: '2.0',
+                    id: 0,
+                    method: 'ping',
+                    params: {}
+                });
+            }
+
+            // Wait a bit for the handler to start.
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            // Send cancellation notification targeting requestId 0.
+            if (transport.onmessage) {
+                transport.onmessage({
+                    jsonrpc: '2.0',
+                    method: 'notifications/cancelled',
+                    params: {
+                        requestId: 0,
+                        reason: 'User cancelled'
+                    }
+                });
+            }
+
+            // Wait for the handler to complete.
+            await new Promise(resolve => setTimeout(resolve, 150));
+
+            // Verify the request was aborted. Before the fix, the
+            // truthiness guard at protocol.ts:726 (`!requestId`) returned
+            // early on `requestId: 0`, so the abort controller was never
+            // reached and `wasAborted` stayed false.
+            expect(wasAborted).toBe(true);
+        });
     });
 
     // Spec basic/patterns/cancellation §Transport-Specific (2026-07-28): on a
