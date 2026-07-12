@@ -160,7 +160,7 @@ For more details on how to run these examples (including recommended commands an
     - [V1 API reference](https://modelcontextprotocol.github.io/typescript-sdk/)
     - [V2 API reference](https://modelcontextprotocol.github.io/typescript-sdk/v2/)
     - [Model Context Protocol documentation](https://modelcontextprotocol.io)
-    - [MCP Specification](https://spec.modelcontextprotocol.io)
+    - [MCP Specification](https://modelcontextprotocol.io/specification/2025-11-25)
     - [Example Servers](https://github.com/modelcontextprotocol/servers)
 
 ## Contributing
